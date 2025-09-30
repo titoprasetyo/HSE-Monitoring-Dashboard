@@ -132,13 +132,13 @@ choice = st.sidebar.radio("Pilih menu:", menu)
 if choice == "Home":
     st.title("📊 HSE Monitoring Dashboard")
     st.markdown(""" 
-        Selamat datang di **HSE Dashboard** Dashboard ini membantu memonitor data HSE: 
+        Selamat datang di **HSE Dashboard**, Dashboard ini membantu memonitor data HSE: 
         - 👷 **Incidents & Near Miss** 
         - 📜 **Permit To Work** 
         - 🔒 **LOTO (Lock Out Tag Out)** 
         - 🎓 **Training & Competency** 
         - 📝 **HIRADC (Hazard Identification, Risk Assessment, and Determining Control)**
-        - 📌 **Cause & kolom kategori lain otomatis dianalisa**
+        - 📌 **Kategori file lain otomatis dianalisa**
     """)
     st.info("Silakan upload file Excel di menu samping.")
 
@@ -332,3 +332,4 @@ footer = """
     </div>
 """
 st.markdown(footer, unsafe_allow_html=True)
+
