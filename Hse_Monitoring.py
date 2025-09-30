@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns  # <-- tambahan untuk Risk Matrix
 from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
 from reportlab.lib import colors
@@ -137,7 +138,8 @@ if choice == "Home":
                 - 📜 **Permit To Work** 
                 - 🔒 **LOTO (Lock Out Tag Out)** 
                 - 🎓 **Training & Competency** 
-                - **Dan analisa data lainnya yang terdapat dalam file**
+                - 📝 **HIRADC (Hazard Identification, Risk Assessment, and Determining Control)**
+                -** Dan yang lainnya**
                 """)
     st.info("Silakan upload file Excel di menu samping.")
 
@@ -163,88 +165,115 @@ elif choice in (st.session_state.get("xls").sheet_names if "xls" in st.session_s
     if df.empty:
         st.warning("⚠️ Data kosong.")
     else:
-        # Filter tanggal
-        if "Tanggal" in df.columns:
-            df["Tanggal"] = pd.to_datetime(df["Tanggal"], errors="coerce")
-            min_date, max_date = df["Tanggal"].min(), df["Tanggal"].max()
-            start_date, end_date = st.date_input("📅 Filter tanggal", [min_date, max_date])
-            df = df[(df["Tanggal"].dt.date >= start_date) & (df["Tanggal"].dt.date <= end_date)]
+        # Analisa HIRADC jika ada Likelihood & Severity
+        if all(col in df.columns for col in ["Likelihood", "Severity"]):
+            st.subheader("📊 Analisa HIRADC")
 
-        # Filter dinamis
-        for col in ["Jenis", "Severity", "Status"]:
-            if col in df.columns:
-                options = df[col].dropna().unique().tolist()
-                selected = st.multiselect(f"Filter {col}", options, default=options)
-                df = df[df[col].isin(selected)]
+            df["Risk Rating"] = df["Likelihood"] * df["Severity"]
+            st.dataframe(df)
 
-        st.dataframe(df)
+            st.write("### Ringkasan HIRADC")
+            st.write(f"- Rata-rata Risk Rating: {df['Risk Rating'].mean():.2f}")
+            st.write(f"- Risk Rating tertinggi: {df['Risk Rating'].max()}")
 
-        # Analisa ringkasan
-        summary = {}
-        if "Jenis" in df.columns and not df["Jenis"].empty:
-            summary["Jenis terbanyak"] = df["Jenis"].mode()[0]
-        if "Severity" in df.columns and not df["Severity"].empty:
-            summary["Severity dominan"] = df["Severity"].mode()[0]
-        if "Status" in df.columns and not df["Status"].empty:
-            summary["Status dominan"] = df["Status"].mode()[0]
-        if "Tanggal" in df.columns:
-            trend = df.groupby(df["Tanggal"].dt.to_period("M")).size().reset_index(name="Jumlah")
-            trend["Tanggal"] = trend["Tanggal"].astype(str)
-            summary["Trend"] = trend
-
-            chart_type = st.selectbox(f"Jenis grafik tren {sheet}", ["line", "column"], key=f"{sheet}_Trend")
-            st.session_state["chart_type_dict"][f"{sheet}_Trend"] = chart_type
-
-            fig, ax = plt.subplots()
-            if chart_type == "line":
-                ax.plot(trend["Tanggal"], trend["Jumlah"], marker="o", label="Jumlah Kasus")
-            else:
-                ax.bar(trend["Tanggal"], trend["Jumlah"], label="Jumlah Kasus")
-            ax.set_title(f"Trend {sheet} Perbulan")
-            ax.set_xlabel("Bulan")
-            ax.set_ylabel("Jumlah")
-            for i, val in enumerate(trend["Jumlah"]):
-                ax.text(i, val, str(val), ha="center", va="bottom", fontsize=8)
-            plt.xticks(rotation=45, ha="right")
-            ax.legend()
+            # Risk Matrix
+            st.write("### 📌 Risk Matrix")
+            matrix = pd.crosstab(df["Likelihood"], df["Severity"])
+            fig, ax = plt.subplots(figsize=(6,5))
+            sns.heatmap(matrix, annot=True, fmt="d", cmap="Reds", ax=ax, cbar=False)
+            ax.set_title("Risk Matrix (Likelihood vs Severity)")
+            ax.set_xlabel("Severity")
+            ax.set_ylabel("Likelihood")
             st.pyplot(fig)
 
-            img_path = f"{sheet}_Trend.png"
+            img_path = f"{sheet}_RiskMatrix.png"
             fig.savefig(img_path, bbox_inches="tight")
-            st.session_state["charts"][f"{sheet}_Trend"] = img_path
+            st.session_state["charts"][f"{sheet}_RiskMatrix"] = img_path
 
-        # Distribusi kategorikal
-        for col in ["Jenis", "Severity", "Status"]:
-            if col in df.columns:
-                chart_type = st.selectbox(f"Jenis grafik distribusi {col} - {sheet} (Pilih dan dapat didownload pada menu download di samping)", ["column", "pie"], key=f"{sheet}_{col}")
-                st.session_state["chart_type_dict"][f"{sheet}_{col}"] = chart_type
+        # Analisa lain (Trend + Distribusi)
+        else:
+            # Filter tanggal
+            if "Tanggal" in df.columns:
+                df["Tanggal"] = pd.to_datetime(df["Tanggal"], errors="coerce")
+                min_date, max_date = df["Tanggal"].min(), df["Tanggal"].max()
+                start_date, end_date = st.date_input("📅 Filter tanggal", [min_date, max_date])
+                df = df[(df["Tanggal"].dt.date >= start_date) & (df["Tanggal"].dt.date <= end_date)]
 
-                counts = df[col].value_counts()
+            # Filter dinamis
+            for col in ["Jenis", "Severity", "Status"]:
+                if col in df.columns:
+                    options = df[col].dropna().unique().tolist()
+                    selected = st.multiselect(f"Filter {col}", options, default=options)
+                    df = df[df[col].isin(selected)]
+
+            st.dataframe(df)
+
+            # Analisa ringkasan
+            summary = {}
+            if "Jenis" in df.columns and not df["Jenis"].empty:
+                summary["Jenis terbanyak"] = df["Jenis"].mode()[0]
+            if "Severity" in df.columns and not df["Severity"].empty:
+                summary["Severity dominan"] = df["Severity"].mode()[0]
+            if "Status" in df.columns and not df["Status"].empty:
+                summary["Status dominan"] = df["Status"].mode()[0]
+            if "Tanggal" in df.columns:
+                trend = df.groupby(df["Tanggal"].dt.to_period("M")).size().reset_index(name="Jumlah")
+                trend["Tanggal"] = trend["Tanggal"].astype(str)
+                summary["Trend"] = trend
+
+                chart_type = st.selectbox(f"Jenis grafik tren {sheet}", ["line", "column"], key=f"{sheet}_Trend")
+                st.session_state["chart_type_dict"][f"{sheet}_Trend"] = chart_type
 
                 fig, ax = plt.subplots()
-                if chart_type == "pie":
-                    ax.pie(counts.values, labels=counts.index, autopct="%1.1f%%")
+                if chart_type == "line":
+                    ax.plot(trend["Tanggal"], trend["Jumlah"], marker="o", label="Jumlah Kasus")
                 else:
-                    ax.bar(counts.index, counts.values)
-                    for i, val in enumerate(counts.values):
-                        ax.text(i, val, str(val), ha="center", va="bottom", fontsize=8)
-                ax.set_title(f"Distribusi {col} - {sheet}")
+                    ax.bar(trend["Tanggal"], trend["Jumlah"], label="Jumlah Kasus")
+                ax.set_title(f"Trend {sheet} Perbulan")
+                ax.set_xlabel("Bulan")
+                ax.set_ylabel("Jumlah")
+                for i, val in enumerate(trend["Jumlah"]):
+                    ax.text(i, val, str(val), ha="center", va="bottom", fontsize=8)
+                plt.xticks(rotation=45, ha="right")
+                ax.legend()
                 st.pyplot(fig)
 
-                img_path = f"{sheet}_{col}.png"
+                img_path = f"{sheet}_Trend.png"
                 fig.savefig(img_path, bbox_inches="tight")
-                st.session_state["charts"][f"{sheet}_{col}"] = img_path
+                st.session_state["charts"][f"{sheet}_Trend"] = img_path
 
-        st.write("### Ringkasan")
-        for k, v in summary.items():
-            if isinstance(v, pd.DataFrame):
-                st.table(v)
-            else:
-                st.write(f"- {k}: {v}")
+            # Distribusi kategorikal
+            for col in ["Jenis", "Severity", "Status"]:
+                if col in df.columns:
+                    chart_type = st.selectbox(f"Jenis grafik distribusi {col} - {sheet}", ["column", "pie"], key=f"{sheet}_{col}")
+                    st.session_state["chart_type_dict"][f"{sheet}_{col}"] = chart_type
 
-        # Simpan hasil
-        st.session_state["summary_dict"][sheet] = summary
-        st.session_state["dfs_dict"][sheet] = df
+                    counts = df[col].value_counts()
+
+                    fig, ax = plt.subplots()
+                    if chart_type == "pie":
+                        ax.pie(counts.values, labels=counts.index, autopct="%1.1f%%")
+                    else:
+                        ax.bar(counts.index, counts.values)
+                        for i, val in enumerate(counts.values):
+                            ax.text(i, val, str(val), ha="center", va="bottom", fontsize=8)
+                    ax.set_title(f"Distribusi {col} - {sheet}")
+                    st.pyplot(fig)
+
+                    img_path = f"{sheet}_{col}.png"
+                    fig.savefig(img_path, bbox_inches="tight")
+                    st.session_state["charts"][f"{sheet}_{col}"] = img_path
+
+            st.write("### Ringkasan")
+            for k, v in summary.items():
+                if isinstance(v, pd.DataFrame):
+                    st.table(v)
+                else:
+                    st.write(f"- {k}: {v}")
+
+            # Simpan hasil
+            st.session_state["summary_dict"][sheet] = summary
+            st.session_state["dfs_dict"][sheet] = df
 
 elif choice == "Download Laporan":
     st.title("⬇️ Download Laporan")
