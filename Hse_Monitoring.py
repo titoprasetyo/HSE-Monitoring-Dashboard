@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns  # <-- tambahan untuk Risk Matrix
+import seaborn as sns  # untuk Risk Matrix
 from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
 from reportlab.lib import colors
@@ -56,9 +56,8 @@ def export_pdf(summary_dict, charts):
     buffer.close()
     return pdf
 
-
 # -----------------------------
-# Fungsi export Excel (support pie/column chart)
+# Fungsi export Excel
 # -----------------------------
 def export_excel(dfs_dict, summary_dict, chart_type_dict):
     output = BytesIO()
@@ -86,37 +85,37 @@ def export_excel(dfs_dict, summary_dict, chart_type_dict):
                 chart.set_y_axis({"name": "Jumlah"})
                 worksheet.insert_chart("E2", chart)
 
-            # Grafik distribusi
-            for col in ["Jenis", "Severity", "Status"]:
-                if col in df.columns and not df[col].empty:
-                    counts = df[col].value_counts().reset_index()
-                    counts.columns = [col, "Jumlah"]
-                    counts.to_excel(writer, sheet_name=f"{sheet}_{col}", index=False)
+            # Grafik distribusi untuk semua kolom kategorikal
+            for col in df.select_dtypes(include="object").columns:
+                if col.lower() == "tanggal":
+                    continue
+                counts = df[col].value_counts().reset_index()
+                counts.columns = [col, "Jumlah"]
+                counts.to_excel(writer, sheet_name=f"{sheet}_{col}", index=False)
 
-                    worksheet = writer.sheets[f"{sheet}_{col}"]
-                    chart_type = chart_type_dict.get(f"{sheet}_{col}", "column")
-                    chart = workbook.add_chart({"type": chart_type})
+                worksheet = writer.sheets[f"{sheet}_{col}"]
+                chart_type = chart_type_dict.get(f"{sheet}_{col}", "column")
+                chart = workbook.add_chart({"type": chart_type})
 
-                    if chart_type == "pie":
-                        chart.add_series({
-                            "name": f"Distribusi {col} - {sheet}",
-                            "categories": [f"{sheet}_{col}", 1, 0, len(counts), 0],
-                            "values":     [f"{sheet}_{col}", 1, 1, len(counts), 1],
-                            "data_labels": {"percentage": True},
-                        })
-                    else:
-                        chart.add_series({
-                            "name": f"Distribusi {col} - {sheet}",
-                            "categories": [f"{sheet}_{col}", 1, 0, len(counts), 0],
-                            "values":     [f"{sheet}_{col}", 1, 1, len(counts), 1],
-                            "data_labels": {"value": True},
-                        })
+                if chart_type == "pie":
+                    chart.add_series({
+                        "name": f"Distribusi {col} - {sheet}",
+                        "categories": [f"{sheet}_{col}", 1, 0, len(counts), 0],
+                        "values":     [f"{sheet}_{col}", 1, 1, len(counts), 1],
+                        "data_labels": {"percentage": True},
+                    })
+                else:
+                    chart.add_series({
+                        "name": f"Distribusi {col} - {sheet}",
+                        "categories": [f"{sheet}_{col}", 1, 0, len(counts), 0],
+                        "values":     [f"{sheet}_{col}", 1, 1, len(counts), 1],
+                        "data_labels": {"value": True},
+                    })
 
-                    chart.set_title({"name": f"Distribusi {col}"})
-                    worksheet.insert_chart("E2", chart)
+                chart.set_title({"name": f"Distribusi {col}"})
+                worksheet.insert_chart("E2", chart)
 
     return output.getvalue()
-
 
 # -----------------------------
 # Streamlit Dashboard
@@ -133,14 +132,14 @@ choice = st.sidebar.radio("Pilih menu:", menu)
 if choice == "Home":
     st.title("📊 HSE Monitoring Dashboard")
     st.markdown(""" 
-                Selamat datang di **HSE Dashboard** Dashboard ini membantu memonitor data HSE: 
-                - 👷 **Incidents & Near Miss** 
-                - 📜 **Permit To Work** 
-                - 🔒 **LOTO (Lock Out Tag Out)** 
-                - 🎓 **Training & Competency** 
-                - 📝 **HIRADC (Hazard Identification, Risk Assessment, and Determining Control)**
-                -    **Dan yang lainnya**
-                """)
+        Selamat datang di **HSE Dashboard** Dashboard ini membantu memonitor data HSE: 
+        - 👷 **Incidents & Near Miss** 
+        - 📜 **Permit To Work** 
+        - 🔒 **LOTO (Lock Out Tag Out)** 
+        - 🎓 **Training & Competency** 
+        - 📝 **HIRADC (Hazard Identification, Risk Assessment, and Determining Control)**
+        - 📌 **Cause & kolom kategori lain otomatis dianalisa**
+    """)
     st.info("Silakan upload file Excel di menu samping.")
 
 elif choice == "Upload File Excel":
@@ -165,7 +164,7 @@ elif choice in (st.session_state.get("xls").sheet_names if "xls" in st.session_s
     if df.empty:
         st.warning("⚠️ Data kosong.")
     else:
-        # Analisa HIRADC jika ada Likelihood & Severity
+        # Analisa HIRADC
         if all(col in df.columns for col in ["Likelihood", "Severity"]):
             st.subheader("📊 Analisa HIRADC")
 
@@ -190,7 +189,7 @@ elif choice in (st.session_state.get("xls").sheet_names if "xls" in st.session_s
             fig.savefig(img_path, bbox_inches="tight")
             st.session_state["charts"][f"{sheet}_RiskMatrix"] = img_path
 
-        # Analisa lain (Trend + Distribusi)
+        # Analisa lain
         else:
             # Filter tanggal
             if "Tanggal" in df.columns:
@@ -199,12 +198,13 @@ elif choice in (st.session_state.get("xls").sheet_names if "xls" in st.session_s
                 start_date, end_date = st.date_input("📅 Filter tanggal", [min_date, max_date])
                 df = df[(df["Tanggal"].dt.date >= start_date) & (df["Tanggal"].dt.date <= end_date)]
 
-            # Filter dinamis
-            for col in ["Jenis", "Severity", "Status"]:
-                if col in df.columns:
-                    options = df[col].dropna().unique().tolist()
-                    selected = st.multiselect(f"Filter {col}", options, default=options)
-                    df = df[df[col].isin(selected)]
+            # Filter dinamis untuk semua kolom kategori
+            for col in df.select_dtypes(include="object").columns:
+                if col.lower() == "tanggal":
+                    continue
+                options = df[col].dropna().unique().tolist()
+                selected = st.multiselect(f"Filter {col}", options, default=options)
+                df = df[df[col].isin(selected)]
 
             st.dataframe(df)
 
@@ -242,27 +242,29 @@ elif choice in (st.session_state.get("xls").sheet_names if "xls" in st.session_s
                 fig.savefig(img_path, bbox_inches="tight")
                 st.session_state["charts"][f"{sheet}_Trend"] = img_path
 
-            # Distribusi kategorikal
-            for col in ["Jenis", "Severity", "Status"]:
-                if col in df.columns:
-                    chart_type = st.selectbox(f"Jenis grafik distribusi {col} - {sheet}", ["column", "pie"], key=f"{sheet}_{col}")
-                    st.session_state["chart_type_dict"][f"{sheet}_{col}"] = chart_type
+            # Distribusi semua kolom kategorikal
+            for col in df.select_dtypes(include="object").columns:
+                if col.lower() == "tanggal":
+                    continue
+                chart_type = st.selectbox(f"Jenis grafik distribusi {col} - {sheet}", ["column", "pie"], key=f"{sheet}_{col}")
+                st.session_state["chart_type_dict"][f"{sheet}_{col}"] = chart_type
 
-                    counts = df[col].value_counts()
+                counts = df[col].value_counts()
 
-                    fig, ax = plt.subplots()
-                    if chart_type == "pie":
-                        ax.pie(counts.values, labels=counts.index, autopct="%1.1f%%")
-                    else:
-                        ax.bar(counts.index, counts.values)
-                        for i, val in enumerate(counts.values):
-                            ax.text(i, val, str(val), ha="center", va="bottom", fontsize=8)
-                    ax.set_title(f"Distribusi {col} - {sheet}")
-                    st.pyplot(fig)
+                fig, ax = plt.subplots()
+                if chart_type == "pie":
+                    ax.pie(counts.values, labels=counts.index, autopct="%1.1f%%")
+                else:
+                    ax.bar(counts.index, counts.values)
+                    for i, val in enumerate(counts.values):
+                        ax.text(i, val, str(val), ha="center", va="bottom", fontsize=8)
+                ax.set_title(f"Distribusi {col} - {sheet}")
+                plt.xticks(rotation=30, ha="right")
+                st.pyplot(fig)
 
-                    img_path = f"{sheet}_{col}.png"
-                    fig.savefig(img_path, bbox_inches="tight")
-                    st.session_state["charts"][f"{sheet}_{col}"] = img_path
+                img_path = f"{sheet}_{col}.png"
+                fig.savefig(img_path, bbox_inches="tight")
+                st.session_state["charts"][f"{sheet}_{col}"] = img_path
 
             st.write("### Ringkasan")
             for k, v in summary.items():
@@ -281,11 +283,32 @@ elif choice == "Download Laporan":
     if "summary_dict" not in st.session_state or "dfs_dict" not in st.session_state:
         st.warning("⚠️ Belum ada analisa yang tersimpan.")
     else:
-        pdf_bytes = export_pdf(st.session_state["summary_dict"], st.session_state["charts"])
-        st.download_button("⬇️ Download PDF", data=pdf_bytes, file_name="laporan_hse.pdf", mime="application/pdf")
+        # Pilih grafik yang mau dimasukkan
+        available_charts = list(st.session_state["charts"].keys())
+        selected_charts = st.multiselect(
+            "📊 Pilih grafik yang akan dimasukkan ke laporan",
+            available_charts,
+            default=available_charts  # default semua terpilih
+        )
 
-        excel_bytes = export_excel(st.session_state["dfs_dict"], st.session_state["summary_dict"], st.session_state["chart_type_dict"])
-        st.download_button("⬇️ Download Excel", data=excel_bytes, file_name="laporan_hse.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        # Filter grafik sesuai pilihan
+        filtered_charts = {
+            k: v for k, v in st.session_state["charts"].items() if k in selected_charts
+        }
+
+        pdf_bytes = export_pdf(st.session_state["summary_dict"], filtered_charts)
+        st.download_button("⬇️ Download PDF", data=pdf_bytes,
+                           file_name="laporan_hse.pdf", mime="application/pdf")
+
+        excel_bytes = export_excel(
+            st.session_state["dfs_dict"],
+            st.session_state["summary_dict"],
+            st.session_state["chart_type_dict"]
+        )
+        st.download_button("⬇️ Download Excel", data=excel_bytes,
+                           file_name="laporan_hse.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 
 # -------------------------
 # Copyright Footer
@@ -309,5 +332,3 @@ footer = """
     </div>
 """
 st.markdown(footer, unsafe_allow_html=True)
-
-
