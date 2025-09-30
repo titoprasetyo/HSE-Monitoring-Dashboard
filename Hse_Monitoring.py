@@ -139,7 +139,7 @@ if choice == "Home":
                 - 🔒 **LOTO (Lock Out Tag Out)** 
                 - 🎓 **Training & Competency** 
                 - 📝 **HIRADC (Hazard Identification, Risk Assessment, and Determining Control)**
-                -    ** Dan yang lainnya**
+                -    **Dan yang lainnya**
                 """)
     st.info("Silakan upload file Excel di menu samping.")
 
@@ -309,4 +309,5 @@ footer = """
     </div>
 """
 st.markdown(footer, unsafe_allow_html=True)
+
 
